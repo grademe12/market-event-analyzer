@@ -1,0 +1,12 @@
+[project]
+name = "market-event-analyzer"
+version = "0.1.0"
+description = "Normalize financial news and disclosures into market events."
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
