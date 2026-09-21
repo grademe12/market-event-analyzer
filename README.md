@@ -8,4 +8,39 @@ This project is intentionally separate from `stock-market`.
 - **stock-market** consumes normalized events and decides how simulated traders react.
 - This project does **not** place real brokerage orders.
 
-The first implementation milestone is a stable output contract that can later be produced by fixtures, rule-based classifiers, or LLM-based classifiers.
+## First boundary: MarketEvent
+
+The analyzer owns the meaning of an external event: what symbol it belongs to, whether the event is interpreted as BUY/SELL/MIXED, how confident that interpretation is, and how large the impact appears to be.
+
+The consumer owns reaction policy. For example, `stock-market` may convert a high-impact BUY event into a larger dormant-trader activation ratio. That policy does not belong here.
+
+Example payload:
+
+```json
+{
+  "event_id": "news-20260921-0001",
+  "symbol": "005930",
+  "event_type": "supply_contract",
+  "direction": "BUY",
+  "confidence": 0.84,
+  "impact": "high",
+  "occurred_at": "2026-09-21T08:20:00+09:00",
+  "detected_at": "2026-09-21T08:20:12+09:00",
+  "source": "provider-name",
+  "source_item_id": "provider-123",
+  "headline": "Example supply contract announcement"
+}
+```
+
+The contract intentionally does not contain trader activation ratios, order quantities, or BUY/SELL probabilities. Those are workload-simulation concerns owned by the consumer.
+
+## Development
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+pytest
+```
+
+Next milestones will add collector and classifier interfaces behind this contract, then one real provider adapter.
