@@ -36,7 +36,7 @@ MarketEvent
 
 ## OpenDART collector
 
-`OpenDartCollector` is the first real provider adapter. It queries the OpenDART disclosure list for the current Korea date, follows all result pages, and emits listed-company disclosures as `RawNewsItem` values.
+`OpenDartCollector` queries the OpenDART disclosure list for the current Korea date, follows all result pages, and emits listed-company disclosures as `RawNewsItem` values.
 
 OpenDART provides the filing date but not an exact filing timestamp in the list response. The collector therefore leaves `published_at` unknown and records the exact time this process first observed the disclosure in `detected_at`.
 
@@ -48,7 +48,45 @@ Set the API key only through the environment:
 export OPENDART_API_KEY='...'
 ```
 
-The collector currently performs a single collection pass. Polling, cursor/dedup state, classification, and delivery to `stock-market` are separate follow-up milestones.
+## Polling and deduplication
+
+Repeated provider polling is composed from two small pieces:
+
+```text
+OpenDartCollector
+      |
+      v
+DeduplicatingCollector
+      |
+      v
+CollectorPoller
+      |
+      v
+new RawNewsItem values only
+```
+
+`SQLiteSeenItemStore` uses `(provider, provider_item_id)` as the durable identity, so an OpenDART `rcept_no` is emitted once even if the process restarts and the provider returns the same disclosure again.
+
+Example:
+
+```python
+from market_event_analyzer import (
+    CollectorPoller,
+    DeduplicatingCollector,
+    SQLiteSeenItemStore,
+)
+from market_event_analyzer.providers import OpenDartCollector
+
+collector = DeduplicatingCollector(
+    OpenDartCollector.from_env(),
+    SQLiteSeenItemStore("state/seen.sqlite3"),
+)
+poller = CollectorPoller(collector, interval_seconds=30)
+
+poller.run(lambda items: print(items))
+```
+
+At this milestone, deduplication means an item is marked seen when it is emitted by the deduplicating collector. A later delivery/retry milestone can introduce acknowledged processing if downstream classifier failures need at-least-once semantics.
 
 ## MarketEvent
 
@@ -81,4 +119,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is polling plus deduplication so the same DART receipt is emitted only once across repeated collection cycles.
+The next milestone is classification: first map disclosure types into stable event categories, then add BUY/SELL/MIXED, impact, and confidence inference behind the existing `EventClassifier` interface.
