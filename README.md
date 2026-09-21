@@ -32,7 +32,23 @@ EventClassifier
 MarketEvent
 ```
 
-`AnalysisPipeline` only orchestrates those two interfaces. It does not know whether collection comes from a fixture, DART, or a news API, and it does not know whether classification is rule-based, LLM-based, or hybrid.
+`AnalysisPipeline` only orchestrates those two interfaces. It does not know whether collection comes from a fixture, OpenDART, or a news API, and it does not know whether classification is rule-based, LLM-based, or hybrid.
+
+## OpenDART collector
+
+`OpenDartCollector` is the first real provider adapter. It queries the OpenDART disclosure list for the current Korea date, follows all result pages, and emits listed-company disclosures as `RawNewsItem` values.
+
+OpenDART provides the filing date but not an exact filing timestamp in the list response. The collector therefore leaves `published_at` unknown and records the exact time this process first observed the disclosure in `detected_at`.
+
+The provider-supplied six-digit stock code is preserved in `RawNewsItem.symbols` instead of being inferred again later.
+
+Set the API key only through the environment:
+
+```bash
+export OPENDART_API_KEY='...'
+```
+
+The collector currently performs a single collection pass. Polling, cursor/dedup state, classification, and delivery to `stock-market` are separate follow-up milestones.
 
 ## MarketEvent
 
@@ -65,4 +81,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is one real collector adapter. Classifier implementation and delivery to `stock-market` remain separate follow-up steps.
+The next milestone is polling plus deduplication so the same DART receipt is emitted only once across repeated collection cycles.
