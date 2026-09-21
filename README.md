@@ -26,13 +26,22 @@ NewsCollector
 RawNewsItem
       |
       v
-EventClassifier
+event-type normalizer
+      |
+      v
+ClassificationInput
+      |
+      v
+EventAssessmentModel
+      |
+      v
+ClassificationDecision
       |
       v
 MarketEvent
 ```
 
-`AnalysisPipeline` only orchestrates those two interfaces. It does not know whether collection comes from a fixture, OpenDART, or a news API, and it does not know whether classification is rule-based, LLM-based, or hybrid.
+The model boundary is intentionally provider-neutral. OpenAI, Gemini, Claude, a local model, or a rule-based implementation can satisfy the same `EventAssessmentModel` contract.
 
 ## OpenDART collector
 
@@ -40,7 +49,7 @@ MarketEvent
 
 OpenDART provides the filing date but not an exact filing timestamp in the list response. The collector therefore leaves `published_at` unknown and records the exact time this process first observed the disclosure in `detected_at`.
 
-The provider-supplied six-digit stock code is preserved in `RawNewsItem.symbols` instead of being inferred again later.
+The provider-supplied six-digit stock code is preserved in `RawNewsItem.symbols`, and the original DART `report_nm` is preserved in `provider_event_name`. Classification code does not need to parse it back out of a display headline.
 
 Set the API key only through the environment:
 
@@ -67,26 +76,23 @@ new RawNewsItem values only
 
 `SQLiteSeenItemStore` uses `(provider, provider_item_id)` as the durable identity, so an OpenDART `rcept_no` is emitted once even if the process restarts and the provider returns the same disclosure again.
 
-Example:
+## Classification contract
 
-```python
-from market_event_analyzer import (
-    CollectorPoller,
-    DeduplicatingCollector,
-    SQLiteSeenItemStore,
-)
-from market_event_analyzer.providers import OpenDartCollector
+`DartEventTypeNormalizer` maps structured DART report names into a stable, small `EventType` vocabulary before any model call. Unknown filings deliberately fall back to `other`.
 
-collector = DeduplicatingCollector(
-    OpenDartCollector.from_env(),
-    SQLiteSeenItemStore("state/seen.sqlite3"),
-)
-poller = CollectorPoller(collector, interval_seconds=30)
+The model receives `ClassificationInput` and must return only a `ClassificationDecision`:
 
-poller.run(lambda items: print(items))
+```json
+{
+  "direction": "BUY",
+  "impact": "high",
+  "confidence": 0.84
+}
 ```
 
-At this milestone, deduplication means an item is marked seen when it is emitted by the deduplicating collector. A later delivery/retry milestone can introduce acknowledged processing if downstream classifier failures need at-least-once semantics.
+That keeps provider SDKs and model response formats outside the core domain contract.
+
+Synthetic evaluation cases live in `eval/classifier_cases.jsonl`. They are test scenarios for comparing structured-output reliability, direction/impact agreement, latency, and cost; they are not investment labels for real companies.
 
 ## MarketEvent
 
@@ -119,4 +125,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is classification: first map disclosure types into stable event categories, then add BUY/SELL/MIXED, impact, and confidence inference behind the existing `EventClassifier` interface.
+The next milestone is model selection. Candidate models can be benchmarked against the same `EventAssessmentModel` contract and evaluation fixtures before one provider adapter is committed.
