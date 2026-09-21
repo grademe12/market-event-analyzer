@@ -150,6 +150,7 @@ class OpenDartCollector:
                     published_at=None,
                     url=DART_VIEWER_URL.format(rcept_no=rcept_no),
                     symbols=(stock_code,),
+                    provider_event_name=report_name,
                 )
             )
         return items

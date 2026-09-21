@@ -12,6 +12,7 @@ class RawNewsItem:
     body: str = ""
     url: str = ""
     symbols: tuple[str, ...] = ()
+    provider_event_name: str = ""
 
     def __post_init__(self) -> None:
         if not self.provider.strip():
