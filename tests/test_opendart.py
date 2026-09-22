@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 import os
 from zoneinfo import ZoneInfo
 
@@ -109,6 +109,55 @@ def test_collector_reads_all_pages() -> None:
         "20260921000001",
         "20260921000002",
     ]
+
+
+def test_collector_supports_explicit_date_ranges() -> None:
+    calls = []
+
+    def fetch_json(url, params):
+        calls.append(dict(params))
+        return {
+            "status": "000",
+            "message": "정상",
+            "total_page": 1,
+            "list": [],
+        }
+
+    items = OpenDartCollector(
+        "test-key",
+        fetch_json=fetch_json,
+        clock=fixed_now,
+    ).collect_range(
+        date(2026, 9, 1),
+        date(2026, 9, 21),
+    )
+
+    assert items == ()
+    assert calls == [
+        {
+            "crtfc_key": "test-key",
+            "bgn_de": "20260901",
+            "end_de": "20260921",
+            "sort": "date",
+            "sort_mth": "asc",
+            "page_no": "1",
+            "page_count": "100",
+        }
+    ]
+
+
+def test_collector_rejects_reversed_date_range() -> None:
+    collector = OpenDartCollector(
+        "test-key",
+        fetch_json=lambda *_: {},
+        clock=fixed_now,
+    )
+
+    with pytest.raises(ValueError, match="end_date"):
+        collector.collect_range(
+            date(2026, 9, 22),
+            date(2026, 9, 21),
+        )
 
 
 def test_no_data_status_returns_empty_tuple() -> None:

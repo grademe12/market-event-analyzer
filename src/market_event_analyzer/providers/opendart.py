@@ -1,5 +1,5 @@
 from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 import os
 from typing import Any
@@ -79,12 +79,32 @@ class OpenDartCollector:
         if detected_at.tzinfo is None:
             raise ValueError("collector clock must return a timezone-aware datetime")
 
-        date = detected_at.astimezone(SEOUL).strftime("%Y%m%d")
+        target_date = detected_at.astimezone(SEOUL).date()
+        return self.collect_range(target_date, target_date, detected_at=detected_at)
+
+    def collect_range(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        detected_at: datetime | None = None,
+    ) -> tuple[RawNewsItem, ...]:
+        if end_date < start_date:
+            raise ValueError("end_date must not be before start_date")
+
+        observed_at = detected_at or self._clock()
+        if observed_at.tzinfo is None:
+            raise ValueError("collector clock must return a timezone-aware datetime")
+
         page_no = 1
         items: list[RawNewsItem] = []
 
         while True:
-            payload = self._fetch_page(date=date, page_no=page_no)
+            payload = self._fetch_page(
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=end_date.strftime("%Y%m%d"),
+                page_no=page_no,
+            )
             status = str(payload.get("status", ""))
             message = str(payload.get("message", ""))
 
@@ -97,7 +117,7 @@ class OpenDartCollector:
             if not isinstance(rows, list):
                 raise ValueError("OpenDART list must be an array")
 
-            items.extend(self._convert_rows(rows, detected_at))
+            items.extend(self._convert_rows(rows, observed_at))
 
             total_page = _positive_int(payload.get("total_page"), fallback=1)
             if page_no >= total_page:
@@ -106,13 +126,19 @@ class OpenDartCollector:
 
         return tuple(items)
 
-    def _fetch_page(self, *, date: str, page_no: int) -> Mapping[str, Any]:
+    def _fetch_page(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        page_no: int,
+    ) -> Mapping[str, Any]:
         return self._fetch_json(
             OPEN_DART_LIST_URL,
             {
                 "crtfc_key": self._api_key,
-                "bgn_de": date,
-                "end_de": date,
+                "bgn_de": start_date,
+                "end_de": end_date,
                 "sort": "date",
                 "sort_mth": "asc",
                 "page_no": str(page_no),
