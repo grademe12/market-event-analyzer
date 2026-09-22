@@ -101,7 +101,7 @@ def build_dart_corpus_candidates(
     for item, event_type in selected:
         try:
             enriched = enricher.enrich(item)
-        except Exception:
+        except RuntimeError:
             failures.append(item.provider_item_id)
             continue
 
