@@ -12,6 +12,10 @@ class NewsCollector(Protocol):
     def collect(self) -> tuple[RawNewsItem, ...]: ...
 
 
+class DisclosureEnricher(Protocol):
+    def enrich(self, item: RawNewsItem) -> RawNewsItem: ...
+
+
 class EventClassifier(Protocol):
     def classify(self, item: RawNewsItem) -> MarketEvent | None: ...
 
