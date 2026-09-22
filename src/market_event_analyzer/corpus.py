@@ -73,16 +73,26 @@ def build_dart_corpus_candidates(
     normalizer = normalizer or DartEventTypeNormalizer()
     items = collector.collect_range(start_date, end_date)
 
-    selected: list[tuple[RawNewsItem, EventType]] = []
-    counts: dict[EventType, int] = {}
+    grouped: dict[EventType, list[RawNewsItem]] = {}
+    event_type_order: list[EventType] = []
     for item in items:
         event_type = normalizer.normalize(item.provider_event_name)
         if event_type is EventType.OTHER and not include_other:
             continue
-        if counts.get(event_type, 0) >= max_per_event_type:
-            continue
-        selected.append((item, event_type))
-        counts[event_type] = counts.get(event_type, 0) + 1
+        if event_type not in grouped:
+            grouped[event_type] = []
+            event_type_order.append(event_type)
+        grouped[event_type].append(item)
+
+    selected: list[tuple[RawNewsItem, EventType]] = []
+    for offset in range(max_per_event_type):
+        for event_type in event_type_order:
+            bucket = grouped[event_type]
+            if offset >= len(bucket):
+                continue
+            selected.append((bucket[offset], event_type))
+            if len(selected) >= limit:
+                break
         if len(selected) >= limit:
             break
 
