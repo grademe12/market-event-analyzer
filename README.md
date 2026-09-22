@@ -94,7 +94,7 @@ The model receives `ClassificationInput` and must return only a `ClassificationD
 
 That keeps provider SDKs and model response formats outside the core domain contract.
 
-Synthetic evaluation cases live in `eval/classifier_cases.jsonl`. They are test scenarios for comparing structured-output reliability, direction/impact agreement, latency, and cost; they are not investment labels for real companies.
+Synthetic evaluation cases live in `eval/classifier_cases.jsonl`. Real OpenDART evaluation drafts can be generated with `scripts/build_dart_eval_corpus.py`, which collects a date range, round-robin samples across normalized event types, enriches only selected filings, and preserves DART provenance for human review. Review instructions and the final corpus schema are documented in `eval/README.md`.
 
 ## MarketEvent
 
@@ -127,4 +127,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone after disclosure enrichment is a realistic DART evaluation corpus, followed by candidate-model benchmarking. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
+The next milestone is candidate-model benchmarking against the reviewed DART corpus. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
