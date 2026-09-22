@@ -125,4 +125,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is model selection. Candidate models can be benchmarked against the same `EventAssessmentModel` contract and evaluation fixtures before one provider adapter is committed.
+The next milestone is OpenDART disclosure content enrichment, followed by a realistic evaluation corpus and model benchmarking. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
