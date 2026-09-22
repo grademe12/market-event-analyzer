@@ -51,6 +51,8 @@ OpenDART provides the filing date but not an exact filing timestamp in the list 
 
 The provider-supplied six-digit stock code is preserved in `RawNewsItem.symbols`, and the original DART `report_nm` is preserved in `provider_event_name`. Classification code does not need to parse it back out of a display headline.
 
+`OpenDartDisclosureEnricher` uses the 14-digit receipt number to download the OpenDART original-document ZIP, selects the main receipt XML, converts DART markup and tables into bounded readable text, and returns a new `RawNewsItem` with `body` populated. It intentionally remains separate from polling/dedup until durable processing state is added, so a transient enrichment failure cannot be mistaken for successful processing.
+
 Set the API key only through the environment:
 
 ```bash
@@ -125,4 +127,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is OpenDART disclosure content enrichment, followed by a realistic evaluation corpus and model benchmarking. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
+The next milestone after disclosure enrichment is a realistic DART evaluation corpus, followed by candidate-model benchmarking. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
