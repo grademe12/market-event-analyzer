@@ -69,7 +69,7 @@ def main() -> int:
                 )
 
             json.dump(result, handle, ensure_ascii=False, separators=(",", ":"))
-            handle.write("\\n")
+            handle.write("\n")
             handle.flush()
 
     print(
