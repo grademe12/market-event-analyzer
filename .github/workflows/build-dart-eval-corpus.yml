@@ -1,0 +1,103 @@
+name: Build DART evaluation corpus
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD)"
+        required: true
+        default: "2026-09-01"
+        type: string
+      end_date:
+        description: "End date (YYYY-MM-DD)"
+        required: true
+        default: "2026-09-22"
+        type: string
+      limit:
+        description: "Maximum number of candidate cases"
+        required: true
+        default: "50"
+        type: string
+      max_per_event_type:
+        description: "Maximum candidates per normalized event type"
+        required: true
+        default: "5"
+        type: string
+      include_other:
+        description: "Include EventType.OTHER disclosures"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: python -m pip install -e '.[dev]'
+
+      - name: Run unit tests
+        run: pytest -q
+
+      - name: Verify OpenDART API key
+        shell: bash
+        run: |
+          if [ -z "$OPENDART_API_KEY" ]; then
+            echo "::error::Repository secret OPENDART_API_KEY is not configured."
+            exit 1
+          fi
+
+      - name: Build corpus draft
+        shell: bash
+        run: |
+          EXTRA_ARGS=()
+          if [ "${{ inputs.include_other }}" != "true" ]; then
+            EXTRA_ARGS+=(--exclude-other)
+          fi
+
+          PYTHONPATH=src python scripts/build_dart_eval_corpus.py \
+            --start-date "${{ inputs.start_date }}" \
+            --end-date "${{ inputs.end_date }}" \
+            --limit "${{ inputs.limit }}" \
+            --max-per-event-type "${{ inputs.max_per_event_type }}" \
+            --output eval/dart_classifier_candidates.jsonl \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Summarize corpus
+        shell: bash
+        run: |
+          CASE_COUNT="$(wc -l < eval/dart_classifier_candidates.jsonl | tr -d ' ')"
+          {
+            echo "## DART evaluation corpus draft"
+            echo
+            echo "- Date range: \`${{ inputs.start_date }}\` → \`${{ inputs.end_date }}\`"
+            echo "- Candidate cases: **$CASE_COUNT**"
+            echo "- Requested limit: \`${{ inputs.limit }}\`"
+            echo "- Max per event type: \`${{ inputs.max_per_event_type }}\`"
+            echo "- Include other: \`${{ inputs.include_other }}\`"
+            echo
+            echo "Download the \`dart-classifier-candidates\` artifact and review labels before using it for benchmarks."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload corpus artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dart-classifier-candidates
+          path: eval/dart_classifier_candidates.jsonl
+          if-no-files-found: error
+          retention-days: 14

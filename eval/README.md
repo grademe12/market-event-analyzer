@@ -10,7 +10,21 @@ The repository keeps two kinds of classifier evaluation data.
 
 Real filing cases are built in two steps so source text and human labels stay auditable.
 
-First, generate a review draft from live OpenDART data:
+First, generate a review draft from live OpenDART data.
+
+### GitHub Actions
+
+If the repository secret `OPENDART_API_KEY` is configured:
+
+1. Open **Actions**.
+2. Select **Build DART evaluation corpus**.
+3. Choose **Run workflow**.
+4. Enter the date range, candidate limit, and maximum cases per event type.
+5. After the run succeeds, download the `dart-classifier-candidates` artifact.
+
+The workflow runs the unit tests before calling OpenDART and keeps the generated filing bodies out of the Actions log. The artifact is retained for 14 days.
+
+### Local
 
 ```bash
 export OPENDART_API_KEY='...'
