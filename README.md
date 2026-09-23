@@ -94,7 +94,38 @@ The model receives `ClassificationInput` and must return only a `ClassificationD
 
 That keeps provider SDKs and model response formats outside the core domain contract.
 
-Synthetic evaluation cases live in `eval/classifier_cases.jsonl`. Real OpenDART evaluation drafts can be generated with `scripts/build_dart_eval_corpus.py`, which collects a date range, round-robin samples across normalized event types, enriches only selected filings, and preserves DART provenance for human review. Review instructions and the final corpus schema are documented in `eval/README.md`.
+Synthetic evaluation cases live in `eval/classifier_cases.jsonl`. Real OpenDART samples can be generated with `scripts/build_dart_eval_corpus.py` and used as realistic smoke inputs for the model adapter. The project does not require a gold-label investment benchmark; the purpose is to turn each real disclosure into one plausible reaction decision that can later drive simulated participant spikes.
+
+## Kiro assessment model
+
+`KiroAssessmentModel` implements the existing `EventAssessmentModel` boundary with one headless Kiro CLI invocation per disclosure. The workspace agent `.kiro/agents/market-event-classifier.json` pins `deepseek-3.2`, disables tools/MCP/powers, and asks for only:
+
+```json
+{
+  "direction": "BUY",
+  "impact": "high",
+  "confidence": 0.87
+}
+```
+
+The disclosure text is sent through stdin rather than command-line arguments.
+
+Prerequisites:
+
+```bash
+# Install/sign in to a current Kiro CLI, then create an API key at app.kiro.dev.
+export KIRO_API_KEY='ksk_...'
+```
+
+Run a downloaded DART corpus artifact through the central classifier:
+
+```bash
+PYTHONPATH=src python scripts/run_kiro_classification_smoke.py \
+  /path/to/dart_classifier_candidates.jsonl \
+  --output eval/kiro_classification_results.jsonl
+```
+
+The smoke runner checks that `deepseek-3.2` is available, classifies each disclosure once, prints concise progress, and writes decision/latency rows to JSONL. It does not fan out model calls to participant runners.
 
 ## MarketEvent
 
@@ -127,4 +158,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is candidate-model benchmarking against the reviewed DART corpus. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
+The next milestone after the Kiro smoke run is composing the resulting `ClassificationDecision` into one `MarketEvent` per disclosure, then delivering that event to `stock-market` for runner-side reaction fan-out. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
