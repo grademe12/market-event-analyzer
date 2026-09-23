@@ -26,6 +26,7 @@ def main() -> int:
         parser.error("KIRO_API_KEY is not set")
 
     project_root = Path(__file__).resolve().parents[1]
+    _verify_deepseek_available(project_root)
     model = KiroAssessmentModel(timeout_seconds=args.timeout_seconds, working_directory=project_root)
     rows = _load_rows(args.input)
     if args.limit:
@@ -94,6 +95,23 @@ def _load_rows(path: Path) -> list[dict[str, object]]:
                 raise ValueError(f"line {line_number} must be a JSON object")
             rows.append(value)
     return rows
+
+
+def _verify_deepseek_available(project_root: Path) -> None:
+    import subprocess
+
+    result = subprocess.run(
+        ["kiro-cli", "chat", "--list-models", "--format", "json"],
+        text=True,
+        capture_output=True,
+        check=False,
+        cwd=project_root,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"unable to list Kiro models: {detail or result.returncode}")
+    if "deepseek-3.2" not in result.stdout.lower():
+        raise RuntimeError("Kiro model deepseek-3.2 is not available for this account")
 
 
 def _classification_input(row: dict[str, object]) -> ClassificationInput:
