@@ -59,6 +59,35 @@ Set the API key only through the environment:
 export OPENDART_API_KEY='...'
 ```
 
+## Durable analysis processing
+
+The live analysis path now persists processing progress in SQLite:
+
+```text
+DISCOVERED
+   ↓ enrichment + event-type normalization
+ENRICHED
+   ↓ Kiro assessment + MarketEvent composition
+CLASSIFIED
+```
+
+`SQLiteProcessingStore` stores the original/enriched item, normalized event type, retry count, last error, and the classified `MarketEvent`. A transient enrichment failure stays at `DISCOVERED`; a transient model failure stays at `ENRICHED`. Pending rows are retried even when a later provider poll no longer returns that disclosure, and a `CLASSIFIED` row is not sent through Kiro again.
+
+`DurableAnalysisPipeline` composes the existing provider-neutral boundaries:
+
+```text
+NewsCollector
+→ SQLite DISCOVERED
+→ DisclosureEnricher
+→ EventTypeNormalizer
+→ SQLite ENRICHED
+→ EventAssessmentModel
+→ compose_market_event()
+→ SQLite CLASSIFIED
+```
+
+The store intentionally stops at `CLASSIFIED` in this PR. A later delivery step can add `DELIVERED` while reusing the persisted event payload so HTTP retries do not repeat model inference.
+
 ## Polling and deduplication
 
 Repeated provider polling is composed from two small pieces:
@@ -160,4 +189,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is wiring enrichment, normalization, Kiro assessment, and `compose_market_event()` into a durable processing lifecycle so transient enrichment/model failures remain retryable before delivery to `stock-market`. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
+The next milestone is an idempotent HTTP delivery boundary to `stock-market`, extending durable state from `CLASSIFIED` to `DELIVERED` without repeating Kiro inference on delivery retries. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
