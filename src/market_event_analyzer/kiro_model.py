@@ -54,6 +54,7 @@ class KiroAssessmentModel:
         command = [
             self._cli_path,
             "chat",
+            "--v3",
             "--agent",
             self._agent_name,
             "--no-interactive",
