@@ -105,8 +105,6 @@ def test_http_delivery_accepts_any_2xx(status):
         open_url=lambda request, **kwargs: FakeResponse(status),
     )
 
-    _, _, event = make_classified_store(pytest.TempPathFactory) if False else (None, None, None)
-
     item = RawNewsItem(
         provider="opendart",
         provider_item_id="20260928000123",
