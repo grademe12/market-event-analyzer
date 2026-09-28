@@ -63,3 +63,17 @@ def test_market_event_rejects_detection_before_occurrence() -> None:
             occurred_at=occurred_at,
             detected_at=occurred_at - timedelta(seconds=1),
         )
+
+
+def test_market_event_allows_unknown_occurrence_time() -> None:
+    event = make_event(occurred_at=None)
+
+    assert event.occurred_at is None
+    assert event.to_payload()["occurred_at"] is None
+
+
+def test_market_event_still_requires_timezone_aware_detection_when_occurrence_unknown() -> None:
+    naive = datetime(2026, 9, 21, 8, 20)
+
+    with pytest.raises(ValueError, match="detected_at"):
+        make_event(occurred_at=None, detected_at=naive)
