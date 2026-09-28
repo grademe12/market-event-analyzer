@@ -32,6 +32,7 @@ class ProcessingState(StrEnum):
     DISCOVERED = "DISCOVERED"
     ENRICHED = "ENRICHED"
     CLASSIFIED = "CLASSIFIED"
+    DELIVERED = "DELIVERED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,7 @@ class ProcessingRecord:
     event_type: EventType | None
     attempt_count: int
     last_error: str
+    event: MarketEvent | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +69,7 @@ def _utc_now() -> datetime:
 
 
 class SQLiteProcessingStore:
-    """Durable state for retryable analysis before downstream delivery exists."""
+    """Durable state for retryable analysis and downstream delivery."""
 
     def __init__(
         self,
@@ -197,6 +199,15 @@ class SQLiteProcessingStore:
             event=event,
         )
 
+    def mark_delivered(self, item: RawNewsItem) -> None:
+        self._transition(
+            item,
+            expected=ProcessingState.CLASSIFIED,
+            target=ProcessingState.DELIVERED,
+            event_type=None,
+            event=None,
+        )
+
     def record_failure(
         self,
         item: RawNewsItem,
@@ -238,21 +249,24 @@ class SQLiteProcessingStore:
             error=message,
         )
 
-    def classified_events(self) -> tuple[MarketEvent, ...]:
+    def classified_records(self) -> tuple[ProcessingRecord, ...]:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT event_json
+                SELECT *
                 FROM analysis_items
                 WHERE processing_state = ?
                 ORDER BY first_detected_at, provider, provider_item_id
                 """,
                 (ProcessingState.CLASSIFIED.value,),
             ).fetchall()
+        return tuple(_record_from_row(row) for row in rows)
+
+    def classified_events(self) -> tuple[MarketEvent, ...]:
         return tuple(
-            _deserialize_event(str(row["event_json"]))
-            for row in rows
-            if row["event_json"] is not None
+            record.event
+            for record in self.classified_records()
+            if record.event is not None
         )
 
     def _transition(
@@ -485,4 +499,9 @@ def _record_from_row(row: sqlite3.Row) -> ProcessingRecord:
         ),
         attempt_count=int(row["attempt_count"]),
         last_error=str(row["last_error"]),
+        event=(
+            _deserialize_event(str(row["event_json"]))
+            if row["event_json"] is not None
+            else None
+        ),
     )
