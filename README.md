@@ -139,7 +139,7 @@ Example payload:
   "direction": "BUY",
   "confidence": 0.84,
   "impact": "high",
-  "occurred_at": "2026-09-21T08:20:00+09:00",
+  "occurred_at": null,
   "detected_at": "2026-09-21T08:20:12+09:00",
   "source": "provider-name",
   "source_item_id": "provider-123",
@@ -148,6 +148,8 @@ Example payload:
 ```
 
 The contract intentionally does not contain trader activation ratios, order quantities, or BUY/SELL probabilities. Those are workload-simulation concerns owned by the consumer.
+
+`occurred_at` is nullable. Providers such as the OpenDART list API may not expose an exact event timestamp, so the analyzer keeps the exact `detected_at` while representing the unknown occurrence time as `null` instead of fabricating it. `compose_market_event()` combines an enriched `RawNewsItem`, normalized `EventType`, and one `ClassificationDecision` into a deterministic event ID of the form `provider:source_item_id:symbol`.
 
 ## Development
 
@@ -158,4 +160,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone after the Kiro smoke run is composing the resulting `ClassificationDecision` into one `MarketEvent` per disclosure, then delivering that event to `stock-market` for runner-side reaction fan-out. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
+The next milestone is wiring enrichment, normalization, Kiro assessment, and `compose_market_event()` into a durable processing lifecycle so transient enrichment/model failures remain retryable before delivery to `stock-market`. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
