@@ -40,7 +40,7 @@ def test_assess_uses_stdin_and_returns_domain_decision() -> None:
     assert decision.impact is Impact.HIGH
     assert decision.confidence == pytest.approx(0.87)
     assert captured["command"] == [
-        "kiro-cli", "chat", "--agent", "market-event-classifier", "--no-interactive"
+        "kiro-cli", "chat", "--v3", "--agent", "market-event-classifier", "--no-interactive"
     ]
     assert "계약금액은 최근 매출액 대비 18.4%" in captured["kwargs"]["input"]
     assert captured["kwargs"]["cwd"] == "/repo"
