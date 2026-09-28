@@ -24,7 +24,7 @@ class MarketEvent:
     direction: Direction
     confidence: float
     impact: Impact
-    occurred_at: datetime
+    occurred_at: datetime | None
     detected_at: datetime
     source: str
     source_item_id: str = ""
@@ -47,10 +47,13 @@ class MarketEvent:
             raise ValueError("confidence must be numeric")
         if not isfinite(float(self.confidence)) or not 0.0 <= float(self.confidence) <= 1.0:
             raise ValueError("confidence must be between 0 and 1")
-        if self.occurred_at.tzinfo is None or self.detected_at.tzinfo is None:
-            raise ValueError("event timestamps must be timezone-aware")
-        if self.detected_at < self.occurred_at:
-            raise ValueError("detected_at must not be before occurred_at")
+        if self.detected_at.tzinfo is None:
+            raise ValueError("detected_at must be timezone-aware")
+        if self.occurred_at is not None:
+            if self.occurred_at.tzinfo is None:
+                raise ValueError("occurred_at must be timezone-aware when provided")
+            if self.detected_at < self.occurred_at:
+                raise ValueError("detected_at must not be before occurred_at")
 
     def to_payload(self) -> dict[str, object]:
         return {
@@ -60,7 +63,11 @@ class MarketEvent:
             "direction": self.direction.value,
             "confidence": float(self.confidence),
             "impact": self.impact.value,
-            "occurred_at": self.occurred_at.isoformat(),
+            "occurred_at": (
+                self.occurred_at.isoformat()
+                if self.occurred_at is not None
+                else None
+            ),
             "detected_at": self.detected_at.isoformat(),
             "source": self.source,
             "source_item_id": self.source_item_id,
