@@ -69,6 +69,8 @@ DISCOVERED
 ENRICHED
    ↓ Kiro assessment + MarketEvent composition
 CLASSIFIED
+   ↓ idempotent HTTP delivery
+DELIVERED
 ```
 
 `SQLiteProcessingStore` stores the original/enriched item, normalized event type, retry count, last error, and the classified `MarketEvent`. A transient enrichment failure stays at `DISCOVERED`; a transient model failure stays at `ENRICHED`. Pending rows are retried even when a later provider poll no longer returns that disclosure, and a `CLASSIFIED` row is not sent through Kiro again.
@@ -86,7 +88,16 @@ NewsCollector
 → SQLite CLASSIFIED
 ```
 
-The store intentionally stops at `CLASSIFIED` in this PR. A later delivery step can add `DELIVERED` while reusing the persisted event payload so HTTP retries do not repeat model inference.
+After classification, `DurableDeliveryWorker` reads the persisted `MarketEvent` and posts it to the stock-market ingest endpoint. Any 2xx response is treated as successful delivery, including the consumer's idempotent duplicate response. Network/HTTP failures leave the row at `CLASSIFIED` with the error recorded, so the next delivery attempt reuses the stored event without repeating enrichment or Kiro inference.
+
+Run one delivery pass with:
+
+```bash
+PYTHONPATH=src python scripts/deliver_classified_events.py \
+  --database data/processing.sqlite3
+```
+
+The endpoint defaults to `http://127.0.0.1:8000/api/v1/events/` and can be changed with `STOCK_MARKET_EVENT_URL` or `--endpoint`.
 
 ## Polling and deduplication
 
@@ -189,4 +200,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is an idempotent HTTP delivery boundary to `stock-market`, extending durable state from `CLASSIFIED` to `DELIVERED` without repeating Kiro inference on delivery retries. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
+The next milestone is session-aware dispatch inside `stock-market`: pending inbox events should be released to the appropriate participant runner(s) without making any additional LLM calls. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
