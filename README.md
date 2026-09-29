@@ -51,7 +51,7 @@ OpenDART provides the filing date but not an exact filing timestamp in the list 
 
 The provider-supplied six-digit stock code is preserved in `RawNewsItem.symbols`, and the original DART `report_nm` is preserved in `provider_event_name`. Classification code does not need to parse it back out of a display headline.
 
-`OpenDartDisclosureEnricher` uses the 14-digit receipt number to download the OpenDART original-document ZIP, selects the main receipt XML, converts DART markup and tables into bounded readable text, and returns a new `RawNewsItem` with `body` populated. It intentionally remains separate from polling/dedup until durable processing state is added, so a transient enrichment failure cannot be mistaken for successful processing.
+`OpenDartDisclosureEnricher` uses the 14-digit receipt number to download the OpenDART original-document ZIP, selects the main receipt XML, converts DART markup and tables into bounded readable text, and returns a new `RawNewsItem` with `body` populated. The live worker runs this behind durable processing state, so a transient enrichment failure remains retryable instead of being mistaken for successful processing.
 
 Set the API key only through the environment:
 
@@ -99,24 +99,81 @@ PYTHONPATH=src python scripts/deliver_classified_events.py \
 
 The endpoint defaults to `http://127.0.0.1:8000/api/v1/events/` and can be changed with `STOCK_MARKET_EVENT_URL` or `--endpoint`.
 
-## Polling and deduplication
+## Live worker
 
-Repeated provider polling is composed from two small pieces:
+The production-like entrypoint continuously composes the existing durable analysis and delivery stages:
 
 ```text
-OpenDartCollector
-      |
-      v
-DeduplicatingCollector
-      |
-      v
-CollectorPoller
-      |
-      v
-new RawNewsItem values only
+OpenDART poll
+  -> DISCOVERED
+  -> document enrichment
+  -> ENRICHED
+  -> Kiro / DeepSeek 3.2 once
+  -> CLASSIFIED
+  -> stock-market gateway
+  -> DELIVERED
+  -> sleep
+  -> repeat
 ```
 
-`SQLiteSeenItemStore` uses `(provider, provider_item_id)` as the durable identity, so an OpenDART `rcept_no` is emitted once even if the process restarts and the provider returns the same disclosure again.
+Provider polling failures are logged and converted to an empty collection cycle so already stored `DISCOVERED`, `ENRICHED`, and `CLASSIFIED` work can still retry. Per-item enrichment/model/delivery failures keep their durable state and are retried on later cycles.
+
+Prepare a local environment file:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+At minimum set `OPENDART_API_KEY`, `KIRO_API_KEY`, and the correct `STOCK_MARKET_EVENT_URL`. For a systemd service, set `KIRO_CLI_PATH` to the absolute output of `which kiro-cli` if the service PATH does not contain it.
+
+To avoid spending model calls on unrelated disclosures, `MARKET_EVENT_SYMBOLS` can contain comma-separated six-digit tickers such as:
+
+```text
+MARKET_EVENT_SYMBOLS=005930,000660
+```
+
+An empty value means all listed-company disclosures are eligible for analysis.
+
+Run one end-to-end cycle before daemonizing:
+
+```bash
+set -a
+source .env
+set +a
+python -m market_event_analyzer --once
+```
+
+Then start the continuous worker:
+
+```bash
+python -m market_event_analyzer
+```
+
+The editable install also exposes the equivalent `market-event-analyzer` command.
+
+### systemd user service
+
+The included unit assumes the repository is `~/market-event-analyzer` and reads `.env` from that directory. If the checkout lives elsewhere, edit the unit paths before installing it.
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/systemd/market-event-analyzer.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now market-event-analyzer.service
+systemctl --user status market-event-analyzer.service
+journalctl --user -u market-event-analyzer.service -f
+```
+
+To keep the user service running after logout and start it across reboots, enable lingering once:
+
+```bash
+sudo loginctl enable-linger "$USER"
+```
+
+## Polling and deduplication
+
+The live worker relies on `SQLiteProcessingStore` as the durable identity boundary: `(provider, provider_item_id)` is inserted once, so repeated OpenDART polls do not cause repeated enrichment or model calls. The older `SQLiteSeenItemStore` / `DeduplicatingCollector` utilities remain available for standalone polling use cases, but they are not the live analysis path.
 
 ## Classification contract
 
@@ -200,4 +257,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The next milestone is session-aware dispatch inside `stock-market`: pending inbox events should be released to the appropriate participant runner(s) without making any additional LLM calls. The implementation sequence, retry semantics, stock-market delivery boundary, and after-hours event policy are defined in [docs/EVENT_ANALYSIS_PIPELINE_PLAN.md](docs/EVENT_ANALYSIS_PIPELINE_PLAN.md).
+With stock-market session-aware runner dispatch in place, the live worker completes the continuous OpenDART → Kiro → MarketEvent → stock-market path. Operational follow-up can focus on metrics, alerting, and expanding provider coverage rather than adding runner-side model calls.
