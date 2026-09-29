@@ -1,0 +1,16 @@
+[Unit]
+Description=Market event analyzer live worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/market-event-analyzer
+EnvironmentFile=%h/market-event-analyzer/.env
+ExecStart=%h/market-event-analyzer/.venv/bin/python -m market_event_analyzer
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
