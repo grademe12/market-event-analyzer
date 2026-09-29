@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Normalize financial news and disclosures into market events."
 requires-python = ">=3.12"
 
+[project.scripts]
+market-event-analyzer = "market_event_analyzer.live:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
