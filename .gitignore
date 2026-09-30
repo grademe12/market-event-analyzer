@@ -7,3 +7,4 @@ eval/kiro_classification_results.jsonl
 *.sqlite3-shm
 *.sqlite3-wal
 .env
+logs/

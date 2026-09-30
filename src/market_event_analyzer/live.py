@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import signal
@@ -273,10 +274,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    logging.basicConfig(
-        level=os.getenv("LOG_LEVEL", "INFO").upper(),
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
+    _configure_logging()
 
     try:
         config = LiveConfig.from_environment()
@@ -317,6 +315,29 @@ def main(argv: list[str] | None = None) -> int:
     worker.run_forever(stop_event)
     logging.info("event=live_worker_stopped")
     return 0
+
+
+def _configure_logging() -> None:
+    level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.handlers.clear()
+
+    stream = logging.StreamHandler()
+    stream.setFormatter(formatter)
+    root.addHandler(stream)
+
+    log_dir = Path(os.getenv("MARKET_EVENT_LOG_DIR", "logs")).expanduser()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = RotatingFileHandler(
+        log_dir / "analyzer.log",
+        maxBytes=5_000_000,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(formatter)
+    root.addHandler(file_handler)
 
 
 def _required_env(name: str) -> str:

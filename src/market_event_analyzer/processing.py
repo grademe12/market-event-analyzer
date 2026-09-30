@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 import json
+import logging
 from pathlib import Path
 import sqlite3
 from typing import Protocol
@@ -22,6 +23,14 @@ from market_event_analyzer.news import RawNewsItem
 
 
 Clock = Callable[[], datetime]
+BODY_LOG_CHARS = 500
+
+
+def compact_log_text(value: str, limit: int) -> str:
+    text = " ".join(value.split())
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}..."
 
 
 class EventTypeNormalizer(Protocol):
@@ -404,6 +413,21 @@ class DurableAnalysisPipeline:
                 self._store.mark_classified(item, event)
                 classified_count += 1
                 events.append(event)
+                logging.info(
+                    "event=disclosure_classified event_id=%s symbol=%s "
+                    "source_item_id=%s provider_event_name=%s headline=%s "
+                    "direction=%s impact=%s confidence=%.2f body_chars=%s body=%s",
+                    event.event_id,
+                    event.symbol,
+                    event.source_item_id,
+                    compact_log_text(item.provider_event_name, 200),
+                    compact_log_text(item.headline, 300),
+                    decision.direction.value,
+                    decision.impact.value,
+                    float(decision.confidence),
+                    len(item.body),
+                    compact_log_text(item.body, BODY_LOG_CHARS),
+                )
             except Exception as exc:
                 failures.append(self._store.record_failure(item, exc))
 

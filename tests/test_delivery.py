@@ -155,6 +155,26 @@ def test_http_delivery_translates_http_and_network_errors():
         HttpMarketEventDelivery("http://stock/events/", open_url=network_error).deliver(event)
 
 
+def test_delivery_success_logs_injected_event(tmp_path, caplog):
+    store, _item, event = make_classified_store(tmp_path)
+    worker = DurableDeliveryWorker(
+        store,
+        HttpMarketEventDelivery(
+            "http://stock/events/",
+            open_url=lambda request, **kwargs: FakeResponse(201),
+        ),
+    )
+
+    with caplog.at_level("INFO"):
+        worker.run_once()
+
+    assert "event=event_delivered" in caplog.text
+    assert f"event_id={event.event_id}" in caplog.text
+    assert f"symbol={event.symbol}" in caplog.text
+    assert f"direction={event.direction.value}" in caplog.text
+    assert f"impact={event.impact.value}" in caplog.text
+
+
 def test_delivery_success_marks_event_delivered(tmp_path):
     store, item, event = make_classified_store(tmp_path)
     worker = DurableDeliveryWorker(
