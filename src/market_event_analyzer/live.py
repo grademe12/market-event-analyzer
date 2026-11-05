@@ -10,6 +10,11 @@ import signal
 from threading import Event
 from typing import Protocol
 
+from market_event_analyzer.claude_model import (
+    DEFAULT_MODEL as DEFAULT_CLAUDE_MODEL,
+    DEFAULT_TIMEOUT_SECONDS as DEFAULT_CLAUDE_TIMEOUT_SECONDS,
+    ClaudeAssessmentModel,
+)
 from market_event_analyzer.delivery import (
     DeliveryCycleResult,
     DurableDeliveryWorker,
@@ -21,6 +26,7 @@ from market_event_analyzer.kiro_model import (
     KiroAssessmentModel,
 )
 from market_event_analyzer.news import RawNewsItem
+from market_event_analyzer.interfaces import EventAssessmentModel
 from market_event_analyzer.normalizers import DartEventTypeNormalizer
 from market_event_analyzer.processing import (
     DurableAnalysisPipeline,
@@ -35,6 +41,7 @@ DEFAULT_POLL_SECONDS = 60.0
 DEFAULT_DATABASE_PATH = Path("data/processing.sqlite3")
 DEFAULT_STOCK_MARKET_EVENT_URL = "http://127.0.0.1:8000/api/v1/events/"
 DEFAULT_DELIVERY_TIMEOUT_SECONDS = 10.0
+ASSESSORS = ("claude", "kiro")
 
 
 class Collector(Protocol):
@@ -62,11 +69,23 @@ class LiveConfig:
     delivery_timeout_seconds: float
     working_directory: Path
     symbols: tuple[str, ...]
+    assessor: str = "claude"
+    claude_cli_path: str = "claude"
+    claude_model: str = DEFAULT_CLAUDE_MODEL
+    claude_timeout_seconds: float = DEFAULT_CLAUDE_TIMEOUT_SECONDS
 
     @classmethod
     def from_environment(cls) -> "LiveConfig":
         opendart_api_key = _required_env("OPENDART_API_KEY")
-        kiro_api_key = _required_env("KIRO_API_KEY")
+        assessor = os.getenv("MARKET_EVENT_ASSESSOR", "claude").strip().lower() or "claude"
+        if assessor not in ASSESSORS:
+            raise ValueError(f"MARKET_EVENT_ASSESSOR must be one of {', '.join(ASSESSORS)}")
+        # The Claude CLI uses its own login; only the Kiro backend needs a key.
+        kiro_api_key = (
+            _required_env("KIRO_API_KEY")
+            if assessor == "kiro"
+            else os.getenv("KIRO_API_KEY", "").strip()
+        )
         stock_market_event_url = os.getenv(
             "STOCK_MARKET_EVENT_URL",
             DEFAULT_STOCK_MARKET_EVENT_URL,
@@ -104,6 +123,14 @@ class LiveConfig:
                 os.getenv("MARKET_EVENT_WORKDIR", str(Path.cwd()))
             ).expanduser().resolve(),
             symbols=_parse_symbols(os.getenv("MARKET_EVENT_SYMBOLS", "")),
+            assessor=assessor,
+            claude_cli_path=os.getenv("CLAUDE_CLI_PATH", "claude").strip() or "claude",
+            claude_model=os.getenv("CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL).strip()
+            or DEFAULT_CLAUDE_MODEL,
+            claude_timeout_seconds=_positive_float(
+                "CLAUDE_TIMEOUT_SECONDS",
+                DEFAULT_CLAUDE_TIMEOUT_SECONDS,
+            ),
         )
 
 
@@ -231,6 +258,22 @@ class LiveWorker:
                 break
 
 
+def build_assessment_model(config: LiveConfig) -> EventAssessmentModel:
+    if config.assessor == "kiro":
+        return KiroAssessmentModel(
+            cli_path=config.kiro_cli_path,
+            agent_name=config.kiro_agent_name,
+            timeout_seconds=config.kiro_timeout_seconds,
+            working_directory=config.working_directory,
+        )
+    return ClaudeAssessmentModel(
+        cli_path=config.claude_cli_path,
+        model=config.claude_model,
+        timeout_seconds=config.claude_timeout_seconds,
+        working_directory=config.working_directory,
+    )
+
+
 def build_live_worker(config: LiveConfig) -> LiveWorker:
     collector: Collector = OpenDartCollector(config.opendart_api_key)
     collector = SymbolFilteringCollector(collector, config.symbols)
@@ -241,12 +284,7 @@ def build_live_worker(config: LiveConfig) -> LiveWorker:
         collector,
         OpenDartDisclosureEnricher(config.opendart_api_key),
         DartEventTypeNormalizer(),
-        KiroAssessmentModel(
-            cli_path=config.kiro_cli_path,
-            agent_name=config.kiro_agent_name,
-            timeout_seconds=config.kiro_timeout_seconds,
-            working_directory=config.working_directory,
-        ),
+        build_assessment_model(config),
         store,
     )
     delivery = DurableDeliveryWorker(
