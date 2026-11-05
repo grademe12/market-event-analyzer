@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 import json
+import logging
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -9,6 +10,7 @@ from market_event_analyzer.processing import (
     ProcessingFailure,
     ProcessingState,
     SQLiteProcessingStore,
+    compact_log_text,
 )
 
 
@@ -119,6 +121,16 @@ class DurableDeliveryWorker:
                 self._delivery.deliver(record.event)
                 self._store.mark_delivered(record.item)
                 delivered_event_ids.append(record.event.event_id)
+                logging.info(
+                    "event=event_delivered event_id=%s symbol=%s direction=%s "
+                    "impact=%s confidence=%.2f headline=%s",
+                    record.event.event_id,
+                    record.event.symbol,
+                    record.event.direction.value,
+                    record.event.impact.value,
+                    float(record.event.confidence),
+                    compact_log_text(record.event.headline, 300),
+                )
             except Exception as exc:
                 failures.append(self._store.record_failure(record.item, exc))
 

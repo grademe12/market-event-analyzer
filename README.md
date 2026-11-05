@@ -43,6 +43,13 @@ MarketEvent
 
 The model boundary is intentionally provider-neutral. OpenAI, Gemini, Claude, a local model, or a rule-based implementation can satisfy the same `EventAssessmentModel` contract.
 
+Two implementations ship today, chosen with `MARKET_EVENT_ASSESSOR`:
+
+- `claude` (default): `ClaudeAssessmentModel` runs one headless `claude -p --model sonnet` call per disclosure with no tools, no MCP servers, no settings files, and no saved session. It asks for structured output that matches `ClassificationDecision` (`--json-schema`) and logs `event=claude_assessment` with the cost and duration of each call. It uses the Claude Code CLI login, so no API key is stored here. Set `CLAUDE_CLI_PATH` to an absolute path for systemd.
+- `kiro`: `KiroAssessmentModel` runs the `market-event-classifier` agent in `.kiro/agents/` through `kiro-cli`. Needs `KIRO_API_KEY`.
+
+Both use the same instructions, so switching backends does not change the question being asked.
+
 ## OpenDART collector
 
 `OpenDartCollector` queries the OpenDART disclosure list for the current Korea date, follows all result pages, and emits listed-company disclosures as `RawNewsItem` values.
@@ -67,13 +74,13 @@ The live analysis path now persists processing progress in SQLite:
 DISCOVERED
    ↓ enrichment + event-type normalization
 ENRICHED
-   ↓ Kiro assessment + MarketEvent composition
+   ↓ model assessment + MarketEvent composition
 CLASSIFIED
    ↓ idempotent HTTP delivery
 DELIVERED
 ```
 
-`SQLiteProcessingStore` stores the original/enriched item, normalized event type, retry count, last error, and the classified `MarketEvent`. A transient enrichment failure stays at `DISCOVERED`; a transient model failure stays at `ENRICHED`. Pending rows are retried even when a later provider poll no longer returns that disclosure, and a `CLASSIFIED` row is not sent through Kiro again.
+`SQLiteProcessingStore` stores the original/enriched item, normalized event type, retry count, last error, and the classified `MarketEvent`. A transient enrichment failure stays at `DISCOVERED`; a transient model failure stays at `ENRICHED`. Pending rows are retried even when a later provider poll no longer returns that disclosure, and a `CLASSIFIED` row is not sent to the model again.
 
 `DurableAnalysisPipeline` composes the existing provider-neutral boundaries:
 
@@ -88,7 +95,7 @@ NewsCollector
 → SQLite CLASSIFIED
 ```
 
-After classification, `DurableDeliveryWorker` reads the persisted `MarketEvent` and posts it to the stock-market ingest endpoint. Any 2xx response is treated as successful delivery, including the consumer's idempotent duplicate response. Network/HTTP failures leave the row at `CLASSIFIED` with the error recorded, so the next delivery attempt reuses the stored event without repeating enrichment or Kiro inference.
+After classification, `DurableDeliveryWorker` reads the persisted `MarketEvent` and posts it to the stock-market ingest endpoint. Any 2xx response is treated as successful delivery, including the consumer's idempotent duplicate response. Network/HTTP failures leave the row at `CLASSIFIED` with the error recorded, so the next delivery attempt reuses the stored event without repeating enrichment or model inference.
 
 Run one delivery pass with:
 
@@ -108,7 +115,7 @@ OpenDART poll
   -> DISCOVERED
   -> document enrichment
   -> ENRICHED
-  -> Kiro / DeepSeek 3.2 once
+  -> assessment model once (Claude Sonnet by default, or Kiro)
   -> CLASSIFIED
   -> stock-market gateway
   -> DELIVERED
@@ -257,4 +264,4 @@ pip install -e '.[dev]'
 pytest
 ```
 
-With stock-market session-aware runner dispatch in place, the live worker completes the continuous OpenDART → Kiro → MarketEvent → stock-market path. Operational follow-up can focus on metrics, alerting, and expanding provider coverage rather than adding runner-side model calls.
+With stock-market session-aware runner dispatch in place, the live worker completes the continuous OpenDART → assessment model → MarketEvent → stock-market path. Operational follow-up can focus on metrics, alerting, and expanding provider coverage rather than adding runner-side model calls.

@@ -192,6 +192,30 @@ def test_classified_event_is_persisted_and_not_reclassified_on_duplicate_discove
     assert store.classified_events()[0].event_id == first.events[0].event_id
 
 
+def test_classification_logs_disclosure_and_decision(tmp_path, caplog):
+    item = make_item()
+    store = SQLiteProcessingStore(tmp_path / "processing.sqlite3", clock=lambda: NOW)
+    pipeline = DurableAnalysisPipeline(
+        FakeCollector([(item,)]),
+        StableEnricher(),
+        FakeNormalizer(),
+        StableModel(),
+        store,
+    )
+
+    with caplog.at_level("INFO"):
+        result = pipeline.run_once()
+
+    assert result.classified_count == 1
+    assert "event=disclosure_classified" in caplog.text
+    assert "symbol=005930" in caplog.text
+    assert "direction=BUY" in caplog.text
+    assert "impact=high" in caplog.text
+    assert "confidence=0.85" in caplog.text
+    assert "headline=삼성전자: 단일판매ㆍ공급계약체결" in caplog.text
+    assert "body=공시 본문" in caplog.text
+
+
 def test_processing_state_survives_store_recreation(tmp_path):
     path = tmp_path / "processing.sqlite3"
     item = make_item()
